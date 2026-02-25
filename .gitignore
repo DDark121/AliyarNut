@@ -1,0 +1,62 @@
+# --- Python ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pdb
+*.egg-info/
+.env
+
+# Virtual environments
+venv/
+env/
+.venv/
+flights.json
+
+# VSCode / IDE
+.vscode/
+.idea/
+
+# Logs
+logs/
+*.log
+
+# Cache
+.cache/
+__pycache__/
+*.pytest_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Environment files (security)
+.env
+.env.*
+!.env.example
+
+# Python compiled
+build/
+dist/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/*.tsbuildinfo
+
+
+# Config-sensitive files
+config/*.local.yaml
+secrets.yaml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+
+data/rag_faiss
+data/telegram_sessions
+
+
+!data/.gitkeep
+!data/telegram_sessions/.gitkeep

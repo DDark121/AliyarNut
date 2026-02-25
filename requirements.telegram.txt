@@ -1,0 +1,10 @@
+python-dotenv
+fastapi
+uvicorn
+telethon
+aiohttp
+httpx
+icecream
+pydantic
+pydantic-core
+pydantic[email]

@@ -1,0 +1,108 @@
+services:
+  db-init:
+    image: fly-db-init:latest
+    build:
+      context: .
+      args:
+        REQUIREMENTS_FILE: requirements.agent.txt
+    depends_on:
+      postgres:
+        condition: service_started
+    command: python scripts/db_init.py
+    env_file:
+      - .env
+    networks:
+      - internal_net
+    restart: "no"
+
+  telegram_profile:
+    image: fly-telegram-profile:latest
+    build:
+      context: .
+      args:
+        REQUIREMENTS_FILE: requirements.telegram.txt
+    volumes:
+      - .:/app
+      - ./data/telegram_sessions:/data/telegram_sessions
+    env_file:
+      - .env
+    depends_on:
+      agent:
+        condition: service_started
+    command: uvicorn telegram_service.app:app --host 0.0.0.0 --port 8001
+    ports:
+      - "${TELEGRAM_PROFILE_PORT:-18001}:8001"
+    restart: unless-stopped
+    networks:
+      - internal_net
+
+  agent:
+    image: fly-agent:latest
+    build:
+      context: .
+      args:
+        REQUIREMENTS_FILE: requirements.agent.txt
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    environment:
+      PYTHONPATH: /app
+      FIXED_TOUCHES_ENABLED: "1"
+      REMINDER_TZ: Asia/Tashkent
+      FIXED_TOUCH_SAFE_START_HOUR: "9"
+      FIXED_TOUCH_SAFE_END_HOUR: "22"
+    depends_on:
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_started
+      db-init:
+        # 🟢 CRITICAL: Wait for DB init to FINISH, not just start
+        condition: service_completed_successfully
+    command: uvicorn ai_service.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "${AGENT_PORT:-18000}:8000"
+    restart: unless-stopped
+    networks:
+      - internal_net
+
+  postgres:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - internal_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - internal_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  internal_net:
+    driver: bridge

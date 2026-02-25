@@ -1,0 +1,23 @@
+model:
+  name: "google/gemini-3-flash-preview"
+  base_url: "https://openrouter.ai/api/v1"
+  temperature: 0.0
+
+backup_model:
+  name: "gpt-5.1"
+  temperature: 0.0
+
+prompts:
+  system_prompt_path: "prompts/system/core.md"
+  fallback : "prompts/templates/fallback.md"
+  memory_enabled: true
+
+security:
+  banned_words_path: "data/baned_words.txt"
+
+postgres:
+  db_uri: "postgresql://postgres:postgres@postgres:5432/postgres?sslmode=disable"
+  max_size: "10"
+
+
+
