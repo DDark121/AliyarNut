@@ -1,2 +1,3 @@
 -r requirements.agent.txt
+python-dateutil
 streamlit

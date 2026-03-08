@@ -41,6 +41,8 @@ COPY . .
 # -----------------------------
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
+ENV CUDA_VISIBLE_DEVICES=""
+ENV RAG_EMBEDDING_DEVICE=cpu
 
 # -----------------------------
 # Expose port (если нужен)

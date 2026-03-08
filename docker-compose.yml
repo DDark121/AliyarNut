@@ -48,7 +48,9 @@ services:
       - .env
     environment:
       PYTHONPATH: /app
+      CUDA_VISIBLE_DEVICES: ""
       FIXED_TOUCHES_ENABLED: "1"
+      RAG_EMBEDDING_DEVICE: cpu
       REMINDER_TZ: Asia/Tashkent
       FIXED_TOUCH_SAFE_START_HOUR: "9"
       FIXED_TOUCH_SAFE_END_HOUR: "22"

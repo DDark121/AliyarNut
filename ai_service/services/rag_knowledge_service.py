@@ -28,6 +28,7 @@ class RagKnowledgeService:
             "RAG_EMBEDDING_MODEL",
             "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
         ).strip()
+        self.embedding_device = (os.getenv("RAG_EMBEDDING_DEVICE", "cpu").strip() or "cpu").lower()
         self.chunk_size = int(os.getenv("RAG_CHUNK_SIZE", "1000"))
         self.chunk_overlap = int(os.getenv("RAG_CHUNK_OVERLAP", "200"))
         self.search_k = int(os.getenv("RAG_SEARCH_K", "4"))
@@ -42,7 +43,10 @@ class RagKnowledgeService:
 
     def _ensure_embeddings_sync(self) -> HuggingFaceEmbeddings:
         if self._embeddings is None:
-            self._embeddings = HuggingFaceEmbeddings(model_name=self.embedding_model_name)
+            self._embeddings = HuggingFaceEmbeddings(
+                model_name=self.embedding_model_name,
+                model_kwargs={"device": self.embedding_device},
+            )
         return self._embeddings
 
     def _iter_doc_files_sync(self) -> list[Path]:
