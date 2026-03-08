@@ -7,7 +7,7 @@ services:
         REQUIREMENTS_FILE: requirements.agent.txt
     depends_on:
       postgres:
-        condition: service_started
+        condition: service_healthy
     command: python scripts/db_init.py
     env_file:
       - .env
@@ -28,7 +28,7 @@ services:
       - .env
     depends_on:
       agent:
-        condition: service_started
+        condition: service_healthy
     command: uvicorn telegram_service.app:app --host 0.0.0.0 --port 8001
     ports:
       - "${TELEGRAM_PROFILE_PORT:-18001}:8001"
@@ -61,6 +61,18 @@ services:
         # 🟢 CRITICAL: Wait for DB init to FINISH, not just start
         condition: service_completed_successfully
     command: uvicorn ai_service.main:app --host 0.0.0.0 --port 8000
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
     ports:
       - "${AGENT_PORT:-18000}:8000"
     restart: unless-stopped

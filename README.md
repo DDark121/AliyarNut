@@ -22,6 +22,12 @@ docker compose up -d
 - `telegram_profile`: `18001 -> 8001` (через `TELEGRAM_PROFILE_PORT`)
 - `postgres` и `redis` наружу не публикуются (без конфликтов с `5432/6379`)
 
+Сетевые параметры `telegram_profile -> agent`:
+- `AGENT_BASE_URL=http://agent:8000`
+- `AGENT_HTTP_TIMEOUT_SEC=30`
+- `AGENT_HTTP_RETRIES=3`
+- `AGENT_HTTP_RETRY_DELAY_SEC=0.8`
+
 ### Основные API `agent`
 
 - `GET /health`

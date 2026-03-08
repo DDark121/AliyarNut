@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import os
 from typing import Any, Dict, Optional
 
 import httpx
@@ -55,18 +57,50 @@ def _get_entity_dict(entity) -> dict:
 class AgentService:
     def __init__(
         self,
-        base_url = "http://agent:8000",
-        timeout: float = 30.0,
+        base_url: str | None = None,
+        timeout: float | None = None,
+        max_retries: int | None = None,
+        retry_delay_sec: float | None = None,
     ):
-        self.base_url = base_url.rstrip("/")
-        self.timeout = timeout
+        env_base = str(os.getenv("AGENT_BASE_URL", "http://agent:8000") or "http://agent:8000").strip()
+        self.base_url = str(base_url or env_base).rstrip("/")
+
+        env_timeout = str(os.getenv("AGENT_HTTP_TIMEOUT_SEC", "30") or "30").strip()
+        self.timeout = float(timeout if timeout is not None else env_timeout)
+
+        env_retries = str(os.getenv("AGENT_HTTP_RETRIES", "3") or "3").strip()
+        self.max_retries = max(1, int(max_retries if max_retries is not None else env_retries))
+
+        env_delay = str(os.getenv("AGENT_HTTP_RETRY_DELAY_SEC", "0.8") or "0.8").strip()
+        self.retry_delay_sec = max(0.1, float(retry_delay_sec if retry_delay_sec is not None else env_delay))
 
     async def _post(self, path: str, payload: Dict[str, Any]) -> Any:
         url = f"{self.base_url}{path}"
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(url, json=payload)
-            response.raise_for_status()
-            return response.json()
+        last_error: Exception | None = None
+
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                    response = await client.post(url, json=payload)
+                    response.raise_for_status()
+                    return response.json()
+            except httpx.HTTPStatusError as exc:
+                status = exc.response.status_code
+                # 4xx обычно не лечится ретраем, кроме 429.
+                if status < 500 and status != 429:
+                    raise
+                last_error = exc
+                ic(f"AgentService HTTP {status} on {path}, attempt {attempt}/{self.max_retries}")
+            except httpx.RequestError as exc:
+                last_error = exc
+                ic(f"AgentService request failed on {path}, attempt {attempt}/{self.max_retries}: {exc}")
+
+            if attempt < self.max_retries:
+                await asyncio.sleep(self.retry_delay_sec * attempt)
+
+        if last_error:
+            raise last_error
+        raise RuntimeError(f"AgentService request failed: {path}")
 
 
     async def ask(

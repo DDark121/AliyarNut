@@ -1,5 +1,6 @@
 from telethon import events, client, TelegramClient,functions, types
 from telegram_service.filters import filter_chat_type
+from telegram_service.filters.chat_type import detect_private_peer_type
 from asyncio import sleep, create_task, CancelledError
 from collections import defaultdict
 from icecream import ic
@@ -27,8 +28,28 @@ def register(client: TelegramClient):
 
     async def message_handler(event):
         try:
-            user_id = event.sender_id
-            entity = await event.get_sender()
+            if event.out:
+                return
+
+            chat = await event.get_chat()
+            sender = await event.get_sender()
+            entity = sender or chat
+            peer_type = detect_private_peer_type(chat)
+
+            if peer_type != "user":
+                name = getattr(sender, "first_name", None) or getattr(chat, "first_name", None) or "Unknown"
+                username = getattr(sender, "username", None) or getattr(chat, "username", None)
+                username_info = f" username=@{username}" if username else ""
+                if peer_type == "bot":
+                    ic(f"Ignoring private message from bot: name={name}{username_info}")
+                else:
+                    ic(f"Ignoring private message from unsupported peer: type={type(chat).__name__} name={name}{username_info}")
+                return
+
+            user_id = event.sender_id or getattr(entity, "id", None)
+            if user_id is None:
+                ic("Ignoring private message without sender_id")
+                return
 
             if event.text == "/delete_my_thread":
                 try:
@@ -50,9 +71,6 @@ def register(client: TelegramClient):
                     await client.send_message(user_id, "я короче чет пошаманил и не работает. Сори лапки 🐾")
                 
                 return
-            
-            if event.out:
-                return 
 
             if user_id in user_timers:
                 user_timers[user_id].cancel()

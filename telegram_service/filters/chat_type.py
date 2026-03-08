@@ -1,12 +1,25 @@
 from functools import wraps
+from typing import Literal
+
 from telethon import events
+from telethon.tl.types import User
+
 from telegram_service.models.model import ChatType, BaseTool
+
+PrivatePeerType = Literal["user", "bot", "unknown"]
+
+
+def detect_private_peer_type(chat: object) -> PrivatePeerType:
+    if isinstance(chat, User):
+        return "bot" if bool(getattr(chat, "bot", False)) else "user"
+    return "unknown"
 
 
 def filter_chat_type(chat_types:ChatType):
 
     def decorator(func): 
 
+        @wraps(func)
         async def wrapper(event: events.NewMessage.Event):
             if event.is_private:
                 chat_type = "private"

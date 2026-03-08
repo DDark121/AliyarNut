@@ -4,6 +4,7 @@ import io
 import os
 from typing import Optional
 
+import httpx
 from PIL import Image
 from PIL import UnidentifiedImageError
 from icecream import ic
@@ -11,34 +12,105 @@ from openai import AsyncOpenAI
 
 from ai_service.config.settings import settings
 
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+DEFAULT_GEMINI_TRANSCRIBE_MODEL = "google/gemini-3-flash-preview"
+TRANSCRIBE_PROMPT = "Напиши весь текст, который слышишь в аудио. Верни только текст."
+
+
 class MediaService:
     def __init__(self):
         # Инициализируем клиента один раз при создании сервиса
         self.client = AsyncOpenAI(api_key=settings.openai_api_key)
         self.media_debug = os.getenv("AGENT_MEDIA_DEBUG", "0").strip().lower() in {"1", "true", "yes", "on"}
+        self.gemini_transcribe_model = (
+            os.getenv("GEMINI_TRANSCRIBE_MODEL", DEFAULT_GEMINI_TRANSCRIBE_MODEL).strip()
+            or DEFAULT_GEMINI_TRANSCRIBE_MODEL
+        )
+        self.openrouter_http_referer = (
+            os.getenv("OPENROUTER_HTTP_REFERER", "http://localhost:8000").strip()
+            or "http://localhost:8000"
+        )
 
     def _debug(self, message: str) -> None:
         if self.media_debug:
             ic(message)
 
+    def _extract_text_from_content(self, content: object) -> str:
+        if isinstance(content, str):
+            return content.strip()
+
+        if isinstance(content, dict):
+            text = content.get("text")
+            return text.strip() if isinstance(text, str) else ""
+
+        if isinstance(content, list):
+            text_parts = []
+            for item in content:
+                if not isinstance(item, dict):
+                    continue
+                text = item.get("text")
+                if isinstance(text, str) and text.strip():
+                    text_parts.append(text.strip())
+            return "\n".join(text_parts).strip()
+
+        return ""
+
     async def transcribe_audio(self, base64_audio: str) -> str:
         """Принимает base64, возвращает текст транскрипции"""
-        # 1. Декодируем
-        file_bytes = base64.b64decode(base64_audio)
-        self._debug(f"[agent-media][audio] decoded_bytes={len(file_bytes)}")
-        
-        # 2. BytesIO
-        voice_data = io.BytesIO(file_bytes)
-        voice_data.name = "voice_message.ogg"  # Важно для OpenAI
+        if not settings.openrouter_api_key:
+            raise RuntimeError("OPENROUTER_API_KEY не найден в .env")
 
-        # 3. Whisper
-        transcript = await self.client.audio.transcriptions.create(
-            model="whisper-1",
-            file=voice_data,
-            response_format="text"
-        )
-        self._debug(f"[agent-media][audio] transcript_len={len(str(transcript))}")
-        return str(transcript)
+        cleaned_audio = self._clean_base64(base64_audio)
+        try:
+            file_bytes = base64.b64decode(cleaned_audio, validate=False)
+        except (binascii.Error, ValueError) as exc:
+            raise ValueError(f"Невалидный base64 аудио: {exc}") from exc
+
+        self._debug(f"[agent-media][audio] decoded_bytes={len(file_bytes)}")
+
+        payload = {
+            "model": self.gemini_transcribe_model,
+            "temperature": 0,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": TRANSCRIBE_PROMPT},
+                        {
+                            "type": "input_audio",
+                            "input_audio": {
+                                "data": base64.b64encode(file_bytes).decode("utf-8"),
+                                "format": "ogg",
+                            },
+                        },
+                    ],
+                }
+            ],
+        }
+        headers = {
+            "Authorization": f"Bearer {settings.openrouter_api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": self.openrouter_http_referer,
+        }
+
+        timeout = httpx.Timeout(120.0, connect=20.0)
+        async with httpx.AsyncClient(timeout=timeout) as http_client:
+            response = await http_client.post(OPENROUTER_URL, headers=headers, json=payload)
+            response.raise_for_status()
+            data = response.json()
+
+        choices = data.get("choices") or []
+        if not choices:
+            self._debug(f"[agent-media][audio] empty_openrouter_response={data}")
+            raise RuntimeError("Ошибка транскрибации: пустой ответ от Gemini")
+
+        content = choices[0].get("message", {}).get("content")
+        transcript = self._extract_text_from_content(content)
+        self._debug(f"[agent-media][audio] transcript_len={len(transcript)}")
+        if transcript:
+            return transcript
+
+        raise RuntimeError("Ошибка транскрибации: Gemini вернул пустой текст")
 
     def _clean_base64(self, payload: str) -> str:
         """Принимает raw base64 или data URL и возвращает чистый base64."""
@@ -51,7 +123,7 @@ class MediaService:
         if missing_padding:
             cleaned += "=" * (4 - missing_padding)
         self._debug(
-            f"[agent-media][image] clean_base64 original_len={original_len} cleaned_len={len(cleaned)}"
+            f"[agent-media][base64] clean_base64 original_len={original_len} cleaned_len={len(cleaned)}"
         )
         return cleaned
 
